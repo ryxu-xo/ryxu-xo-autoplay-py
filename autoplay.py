@@ -32,11 +32,11 @@ class LavalinkAutoplay:
         # Track history to prevent repeats
         self.track_history: Dict[str, Set[str]] = {}
     
-    def set_eura(self, eura_instance):
-        """Set the Euralink instance for track resolution."""
-        self.eura = eura_instance
-        self.providers[AutoplaySource.YOUTUBE].set_eura(eura_instance)
-        self.providers[AutoplaySource.SPOTIFY].set_eura(eura_instance)
+    def set_lavalink_client(self, lavalink_instance):
+        """Set the Lavalink client instance for track resolution."""
+        self.eura = lavalink_instance
+        self.providers[AutoplaySource.YOUTUBE].set_eura(lavalink_instance)
+        self.providers[AutoplaySource.SPOTIFY].set_eura(lavalink_instance)
     
     def map_source_name(self, source_name: str, track_info: Optional[LavalinkTrackInfo] = None) -> AutoplaySource:
         """Map various source name formats to AutoplaySource enum."""

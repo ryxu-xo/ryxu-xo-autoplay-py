@@ -94,15 +94,16 @@ The package automatically detects the source of the current track and finds simi
 - **YouTube** → Uses Lavalink `ytsearch` to find similar tracks
 - **SoundCloud** → Uses web scraping to find recommended tracks
 
-## Euralink Integration
+## Wavelink Integration
 
 ```python
 import discord
 from discord.ext import commands
+import wavelink
 from autoplay import LavalinkAutoplay, LavalinkTrackInfo, AutoplayConfig
 
 # Bot setup
-bot = commands.Bot(command_prefix='!', intents=discord.Intents.default())
+bot = commands.Bot(command_prefix='?', intents=discord.Intents.default())
 
 # Autoplay setup
 config = AutoplayConfig(
@@ -119,29 +120,32 @@ autoplay = LavalinkAutoplay(config)
 
 @bot.event
 async def on_ready():
-    # Initialize Euralink
-    global eura
-    eura = Euralink(bot)
-    await eura.connect()
-    autoplay.set_eura(eura)
+    # Initialize Wavelink
+    nodes = [wavelink.Node(uri="ws://localhost:2333", password="youshallnotpass")]
+    await wavelink.Pool.connect(nodes=nodes, client=bot, cache_capacity=100)
+    autoplay.set_eura(wavelink.Pool)
 
 @bot.event
-async def on_track_end(player, track, reason):
-    if not player.queue:
+async def on_wavelink_track_end(payload):
+    player = payload.player
+    if not player.queue and player.autoplay == wavelink.AutoPlayMode.enabled:
         # Create track info from the ended track
         track_info = LavalinkTrackInfo(
-            title=track.title,
-            author=track.author,
-            identifier=track.identifier,
-            uri=track.uri,
-            source_name=track.source_name
+            title=payload.track.title,
+            author=payload.track.author,
+            identifier=payload.track.identifier,
+            uri=payload.track.uri,
+            source_name=payload.track.source
         )
         
         # Get next track
         result = await autoplay.get_next_track(track_info, str(player.guild.id))
         
         if result.success:
-            await eura.play(player, result.url)
+            tracks = await wavelink.Playable.search(result.url)
+            if tracks and not isinstance(tracks, wavelink.Playlist):
+                await player.queue.put_wait(tracks[0])
+                await player.play(player.queue.get())
 ```
 
 ## Other Lavalink Clients
@@ -202,6 +206,104 @@ player.events.on('playerFinish', async (queue, track) => {
 });
 ```
 
+### Lavalink.py (Python)
+```python
+import discord
+from discord.ext import commands
+import lavalink
+from lavalink.events import TrackEndEvent, QueueEndEvent
+from autoplay import LavalinkAutoplay, LavalinkTrackInfo, AutoplayConfig
+
+class Music(commands.Cog):
+    def __init__(self, bot):
+        self.bot = bot
+        
+        # Initialize Lavalink
+        if not hasattr(bot, 'lavalink'):
+            bot.lavalink = lavalink.Client(bot.user.id)
+            bot.lavalink.add_node(host='localhost', port=2333, password='youshallnotpass',
+                                  region='us', name='default-node')
+        
+        self.lavalink = bot.lavalink
+        self.lavalink.add_event_hooks(self)
+        
+        # Initialize autoplay
+        self.autoplay = LavalinkAutoplay(AutoplayConfig(
+            max_retries=1,
+            timeout=5000,
+            rate_limit_delay=500,
+            max_history_size=50
+        ))
+        self.autoplay.set_eura(self.lavalink)
+
+    @lavalink.listener(TrackEndEvent)
+    async def on_track_end(self, event: TrackEndEvent):
+        player = event.player
+        if not player.queue:
+            # Create track info from the ended track
+            track_info = LavalinkTrackInfo(
+                title=event.track.title,
+                author=event.track.author,
+                identifier=event.track.identifier,
+                uri=event.track.uri,
+                source_name=event.track.source
+            )
+            
+            # Get next track using autoplay
+            result = await self.autoplay.get_next_track(track_info, str(player.guild_id))
+            
+            if result.success:
+                # Search for the track using Lavalink
+                tracks = await player.node.get_tracks(result.url)
+                if tracks and tracks.tracks:
+                    track = tracks.tracks[0]
+                    track.extra["requester"] = "autoplay"
+                    player.add(track=track)
+                    await player.play()
+
+    @lavalink.listener(QueueEndEvent)
+    async def on_queue_end(self, event: QueueEndEvent):
+        guild_id = event.player.guild_id
+        guild = self.bot.get_guild(guild_id)
+        if guild is not None:
+            await guild.voice_client.disconnect(force=True)
+```
+
+### Wavelink (Python) - **Archived**
+> **Note**: [Wavelink is no longer maintained](https://github.com/PythonistaGuild/Wavelink) as of April 2025. Consider using Lavalink.py or other alternatives.
+
+```python
+import wavelink
+from autoplay import LavalinkAutoplay, LavalinkTrackInfo, AutoplayConfig
+
+# Wavelink integration (deprecated)
+autoplay = LavalinkAutoplay(AutoplayConfig(
+    max_retries=1,
+    timeout=5000,
+    rate_limit_delay=500,
+    max_history_size=50
+))
+
+@bot.event
+async def on_wavelink_track_end(payload):
+    player = payload.player
+    if not player.queue and player.autoplay == wavelink.AutoPlayMode.enabled:
+        track_info = LavalinkTrackInfo(
+            title=payload.track.title,
+            author=payload.track.author,
+            identifier=payload.track.identifier,
+            uri=payload.track.uri,
+            source_name=payload.track.source
+        )
+        
+        result = await autoplay.get_next_track(track_info, str(player.guild.id))
+        if result.success:
+            tracks = await wavelink.Playable.search(result.url)
+            if tracks and not isinstance(tracks, wavelink.Playlist):
+                await player.queue.put_wait(tracks[0])
+                await player.play(player.queue.get())
+```
+
 ## Event System
 
 ```python
@@ -230,8 +332,8 @@ Main autoplay class.
 - `get_next_track_for_source(track_info: LavalinkTrackInfo, source: AutoplaySource, guild_id: str) -> AutoplayResult`
   - Get the next track for a specific source
   
-- `set_eura(eura_instance)`
-  - Set the Euralink instance for track resolution
+- `set_eura(lavalink_instance)`
+  - Set the Lavalink client instance for track resolution
   
 - `clear_history(guild_id: Optional[str] = None)`
   - Clear track history for a guild or all guilds
@@ -317,4 +419,4 @@ For support and questions:
 
 ---
 
-**Note**: Euralink has its own autoplay system. This package is an alternative implementation with additional features and optimizations.
+**Note**: Many Lavalink clients have their own autoplay systems. This package is an alternative implementation with additional features, optimizations, and cross-client compatibility.

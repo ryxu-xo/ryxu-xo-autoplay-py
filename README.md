@@ -123,7 +123,7 @@ async def on_ready():
     # Initialize Wavelink
     nodes = [wavelink.Node(uri="ws://localhost:2333", password="youshallnotpass")]
     await wavelink.Pool.connect(nodes=nodes, client=bot, cache_capacity=100)
-    autoplay.set_eura(wavelink.Pool)
+    autoplay.set_lavalink_client(wavelink.Pool)
 
 @bot.event
 async def on_wavelink_track_end(payload):
@@ -148,65 +148,7 @@ async def on_wavelink_track_end(payload):
                 await player.play(player.queue.get())
 ```
 
-## Other Lavalink Clients
-
-### erela.js (JavaScript)
-```javascript
-const { LavalinkAutoplay } = require('ryxu-xo-autoplay');
-
-const autoplay = new LavalinkAutoplay({
-    maxRetries: 1,
-    timeout: 5000,
-    rateLimitDelay: 500,
-    maxRecommendations: 5,
-    maxTracks: 10,
-    enableRadioMode: false,
-    maxHistorySize: 50
-});
-
-// Set your Lavalink client
-autoplay.setEura(yourErelaClient);
-
-// Use in track end event
-player.on('trackEnd', async (player, track, reason) => {
-    if (!player.queue.length) {
-        const result = await autoplay.getNextTrack(track, player.guild.id);
-        if (result.success) {
-            player.play(result.url);
-        }
-    }
-});
-```
-
-### discord-player (JavaScript)
-```javascript
-const { LavalinkAutoplay } = require('ryxu-xo-autoplay');
-
-const autoplay = new LavalinkAutoplay({
-    maxRetries: 1,
-    timeout: 5000,
-    rateLimitDelay: 500,
-    maxRecommendations: 5,
-    maxTracks: 10,
-    enableRadioMode: false,
-    maxHistorySize: 50
-});
-
-// Set your Lavalink client
-autoplay.setEura(player);
-
-// Use in track end event
-player.events.on('playerFinish', async (queue, track) => {
-    if (!queue.tracks.length) {
-        const result = await autoplay.getNextTrack(track, queue.guild.id);
-        if (result.success) {
-            queue.addTrack(result.url);
-        }
-    }
-});
-```
-
-### Lavalink.py (Python)
+## Lavalink.py Integration
 ```python
 import discord
 from discord.ext import commands
@@ -234,7 +176,7 @@ class Music(commands.Cog):
             rate_limit_delay=500,
             max_history_size=50
         ))
-        self.autoplay.set_eura(self.lavalink)
+        self.autoplay.set_lavalink_client(self.lavalink)
 
     @lavalink.listener(TrackEndEvent)
     async def on_track_end(self, event: TrackEndEvent):
@@ -332,7 +274,7 @@ Main autoplay class.
 - `get_next_track_for_source(track_info: LavalinkTrackInfo, source: AutoplaySource, guild_id: str) -> AutoplayResult`
   - Get the next track for a specific source
   
-- `set_eura(lavalink_instance)`
+- `set_lavalink_client(lavalink_instance)`
   - Set the Lavalink client instance for track resolution
   
 - `clear_history(guild_id: Optional[str] = None)`
